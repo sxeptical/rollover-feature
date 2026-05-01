@@ -1,16 +1,76 @@
-# React + Vite
+# Audit Rollover Automation (Frontend + Backend)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This repository now contains both parts of the rollover system:
 
-Currently, two official plugins are available:
+- `src/`, `public/`, `vite.config.js`: React frontend (Vite)
+- `backend/`: Node.js + Express backend that runs the Python rollover script
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Project Structure
 
-## React Compiler
+```text
+.
+├── backend
+│   ├── controllers
+│   ├── routes
+│   ├── scripts
+│   ├── services
+│   ├── utils
+│   ├── package.json
+│   └── server.js
+├── src
+├── public
+├── package.json
+└── vite.config.js
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Prerequisites
 
-## Expanding the ESLint configuration
+- Node.js (frontend + backend)
+- Python 3.13 (for `backend/scripts/rollover.py`)
+- Dropbox app access token with required scopes
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Environment Variables
+
+Frontend (root `.env`):
+
+```env
+VITE_DEFAULT_CLIENT_NAME=ABC
+VITE_DEFAULT_FINANCIAL_YEAR=FY 2025-2026
+```
+
+Backend (`backend/.env`):
+
+```env
+PORT=3000
+DROPBOX_ACCESS_TOKEN=your_dropbox_token
+DROPBOX_ARCHIVE_BASE=/ABC-v2/ABC
+DROPBOX_CLIENTS_BASE=/ABC-v2/CLIENTS
+LOG_LEVEL=info
+```
+
+## Run Locally
+
+1. Install frontend deps:
+```bash
+npm install
+```
+
+2. Install backend deps:
+```bash
+cd backend
+npm install
+cd ..
+```
+
+3. Start backend:
+```bash
+cd backend
+npm run dev
+```
+
+4. Start frontend (separate terminal):
+```bash
+npm run dev
+```
+
+Frontend runs on `http://localhost:5173` and proxies `/api` to backend `http://localhost:3000`.

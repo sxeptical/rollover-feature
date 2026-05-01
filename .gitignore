@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 .env
+*.pyc
+backend/scripts/__pycache__/
+backend/rollover-backend/
