@@ -44,6 +44,11 @@ def list_folders(dbx: dropbox.Dropbox, path: str) -> list[str]:
     """Return immediate sub-folder names under *path*."""
     try:
         result = dbx.files_list_folder(path)
+    except dropbox.exceptions.ApiError as exc:
+        text = str(exc)
+        if "ListFolderError('path'" in text and "not_found" in text:
+            raise FileNotFoundError(f"Dropbox path not found: {path}") from exc
+        raise
     except dropbox.exceptions.BadInputError as exc:
         text = str(exc)
         if "required scope" in text and "files.metadata.read" in text:
@@ -73,6 +78,58 @@ def find_latest_year_folder(dbx: dropbox.Dropbox, archive_path: str) -> str | No
         return None
     year_folders.sort(key=lambda t: (t[0], t[1]))
     return year_folders[-1][2]
+
+
+def resolve_client_archive_path(
+    dbx: dropbox.Dropbox,
+    archive_base: str,
+    client_name: str,
+) -> tuple[str, str]:
+    """
+    Resolve the archive path for a client and return:
+      (resolved_archive_path, latest_year_folder)
+
+    Tries common Dropbox structures:
+      - <archive_base>/<client_name>
+      - <archive_base>/<client_name>/<client_name>
+      - <archive_base>
+    """
+    candidates = []
+    for p in (
+        f"{archive_base}/{client_name}",
+        f"{archive_base}/{client_name}/{client_name}",
+        archive_base,
+    ):
+        clean = re.sub(r"/{2,}", "/", p).rstrip("/")
+        if clean and clean not in candidates:
+            candidates.append(clean)
+
+    missing_paths: list[str] = []
+    no_year_paths: list[str] = []
+
+    for candidate in candidates:
+        try:
+            latest = find_latest_year_folder(dbx, candidate)
+        except FileNotFoundError:
+            missing_paths.append(candidate)
+            continue
+
+        if latest:
+            return candidate, latest
+        no_year_paths.append(candidate)
+
+    if no_year_paths:
+        joined = ", ".join(no_year_paths)
+        raise RuntimeError(
+            f"No year folders found under candidate archive paths: {joined}. "
+            "Check client name and archive folder structure."
+        )
+
+    joined = ", ".join(missing_paths) if missing_paths else ", ".join(candidates)
+    raise RuntimeError(
+        f"Archive path not found. Checked: {joined}. "
+        "Set --archive / DROPBOX_ARCHIVE_BASE to the correct Dropbox root."
+    )
 
 
 def download_folder(
@@ -332,10 +389,7 @@ def run_rollover(
     new_start, new_end = parse_year_string(new_financial_year)
 
     # 1. Locate the latest previous-year folder
-    client_archive = f"{archive_base}/{client_name}"
-    latest_folder = find_latest_year_folder(dbx, client_archive)
-    if not latest_folder:
-        return {"status": "error", "message": f"No year folders found in {client_archive}"}
+    client_archive, latest_folder = resolve_client_archive_path(dbx, archive_base, client_name)
 
     old_start, old_end = parse_year_string(latest_folder)
 

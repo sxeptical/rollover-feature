@@ -1,10 +1,12 @@
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const logger = require('../utils/logger');
 const jobStore = require('./jobStore');
 
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
-const PYTHON_PATH = process.env.PYTHON_PATH || path.resolve(__dirname, '..', 'rollover-backend', 'bin', 'python');
+const VENV_PYTHON_PATH = path.resolve(__dirname, '..', 'rollover-backend', 'bin', 'python');
+const PYTHON_PATH = process.env.PYTHON_PATH || (fs.existsSync(VENV_PYTHON_PATH) ? VENV_PYTHON_PATH : 'python3');
 const SCRIPT_PATH = path.resolve(__dirname, '..', 'scripts', 'rollover.py');
 
 const activeProcesses = new Map(); // jobId -> ChildProcess
