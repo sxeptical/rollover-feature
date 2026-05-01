@@ -1,121 +1,121 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { useRef, useState } from 'react'
 import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [clientName, setClientName] = useState(import.meta.env.VITE_DEFAULT_CLIENT_NAME || 'ABC')
+  const [financialYear, setFinancialYear] = useState(import.meta.env.VITE_DEFAULT_FINANCIAL_YEAR || 'FY 2025-2026')
+  const [jobId, setJobId] = useState(null)
+  const [status, setStatus] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const pollerRef = useRef(null)
+
+  const stopPolling = () => {
+    if (pollerRef.current) {
+      clearInterval(pollerRef.current)
+      pollerRef.current = null
+    }
+  }
+
+  const pollStatus = (id) => {
+    stopPolling()
+    pollerRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/status/${id}`)
+        const data = await res.json()
+        if (!data.success) {
+          setError(data.message || 'Failed to fetch status')
+          stopPolling()
+          return
+        }
+        setStatus(data)
+        if (data.status === 'completed' || data.status === 'failed') {
+          stopPolling()
+        }
+      } catch (err) {
+        setError(err.message)
+        stopPolling()
+      }
+    }, 2000)
+  }
+
+  const handleRollover = async () => {
+    setLoading(true)
+    setError(null)
+    setJobId(null)
+    setStatus(null)
+    stopPolling()
+
+    try {
+      const res = await fetch('/api/rollover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientName, newFinancialYear: financialYear }),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        setError(data.errors ? data.errors.join(', ') : data.message || 'Request failed')
+        return
+      }
+
+      setJobId(data.jobId)
+      pollStatus(data.jobId)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <main className="tester-screen">
+      <section className="tester-card">
+        <h1>Rollover Test Console</h1>
+        <p className="subtext">Run the backend rollover against your Dropbox sample data.</p>
+
+        <div className="rollover-form">
+          <label>
+            Client Name
+            <input
+              type="text"
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              placeholder="e.g. ABC"
+            />
+          </label>
+          <label>
+            Financial Year
+            <input
+              type="text"
+              value={financialYear}
+              onChange={(e) => setFinancialYear(e.target.value)}
+              placeholder="e.g. FY 2025-2026"
+            />
+          </label>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
+
         <button
           type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
+          className="rollover-btn"
+          onClick={handleRollover}
+          disabled={loading || !clientName.trim() || !financialYear.trim()}
         >
-          Count is {count}
+          {loading ? 'Starting...' : 'Run Rollover'}
         </button>
+
+        {error ? <p className="rollover-error">{error}</p> : null}
+
+        {jobId ? (
+          <div className="rollover-status">
+            <p><strong>Job ID:</strong> {jobId}</p>
+            <p><strong>Status:</strong> {status?.status || 'queued'}</p>
+            {status?.error ? <p className="rollover-error">{status.error}</p> : null}
+            {status?.logs?.length ? <pre className="rollover-logs">{status.logs.join('\n')}</pre> : null}
+            {status?.result ? <pre className="rollover-logs">{JSON.stringify(status.result, null, 2)}</pre> : null}
+          </div>
+        ) : null}
       </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+    </main>
   )
 }
 
