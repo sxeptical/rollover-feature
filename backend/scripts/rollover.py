@@ -139,14 +139,18 @@ def download_folder(
 ) -> Path:
     """Recursively download *remote_path* into *local_dir* and return the local path."""
     result = dbx.files_list_folder(remote_path, recursive=True)
-    for entry in result.entries:
-        rel = entry.path_display[len(remote_path):]
-        local_path = local_dir / rel.lstrip("/")
-        if isinstance(entry, dropbox.files.FolderMetadata):
-            local_path.mkdir(parents=True, exist_ok=True)
-        elif isinstance(entry, dropbox.files.FileMetadata):
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            dbx.files_download_to_file(str(local_path), entry.path_display)
+    while True:
+        for entry in result.entries:
+            rel = entry.path_display[len(remote_path):]
+            local_path = local_dir / rel.lstrip("/")
+            if isinstance(entry, dropbox.files.FolderMetadata):
+                local_path.mkdir(parents=True, exist_ok=True)
+            elif isinstance(entry, dropbox.files.FileMetadata):
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                dbx.files_download_to_file(str(local_path), entry.path_display)
+        if not result.has_more:
+            break
+        result = dbx.files_list_folder_continue(result.cursor)
     return local_dir
 
 
@@ -212,12 +216,35 @@ def shift_years_in_text(text: str, old_start: int, old_end: int, new_start: int,
 
 
 def rename_path(path: Path, old_start: int, old_end: int, new_start: int, new_end: int) -> Path:
-    """Rename a single file or folder, replacing year references. Returns new path."""
+    """Rename a single file or folder, replacing year references. Returns new path.
+
+    Replacements are ordered end-first to avoid corrupting names when years are
+    consecutive (e.g. FY 2023-2024 -> FY 2024-2025).  Sentence placeholders
+    (___S___, ___E___, ___s___, ___e___) prevent double-replacement.
+    """
+    SENTINEL_START = "___S___"
+    SENTINEL_END = "___E___"
+    SENTINEL_SHORT_START = "___s___"
+    SENTINEL_SHORT_END = "___e___"
+
+    old_start_s = str(old_start)
+    old_end_s = str(old_end)
+    new_start_s = str(new_start)
+    new_end_s = str(new_end)
+    old_start_short = old_start_s[-2:]
+    old_end_short = old_end_s[-2:]
+    new_start_short = new_start_s[-2:]
+    new_end_short = new_end_s[-2:]
+
     new_name = path.name
-    new_name = new_name.replace(str(old_start), str(new_start))
-    new_name = new_name.replace(str(old_end), str(new_end))
-    new_name = new_name.replace(str(old_start)[-2:], str(new_start)[-2:])
-    new_name = new_name.replace(str(old_end)[-2:], str(new_end)[-2:])
+    new_name = new_name.replace(old_start_s, SENTINEL_START)
+    new_name = new_name.replace(old_end_s, SENTINEL_END)
+    new_name = new_name.replace(old_start_short, SENTINEL_SHORT_START)
+    new_name = new_name.replace(old_end_short, SENTINEL_SHORT_END)
+    new_name = new_name.replace(SENTINEL_START, new_start_s)
+    new_name = new_name.replace(SENTINEL_END, new_end_s)
+    new_name = new_name.replace(SENTINEL_SHORT_START, new_start_short)
+    new_name = new_name.replace(SENTINEL_SHORT_END, new_end_short)
     if new_name != path.name:
         new_path = path.with_name(new_name)
         path.rename(new_path)
@@ -231,11 +258,8 @@ def rename_tree(root: Path, old_start: int, old_end: int, new_start: int, new_en
         dp = Path(dirpath)
         for f in filenames:
             rename_path(dp / f, old_start, old_end, new_start, new_end)
-        renames = []
         for d in dirnames:
-            new = rename_path(dp / d, old_start, old_end, new_start, new_end)
-            renames.append(new.name)
-        dirnames[:] = renames
+            rename_path(dp / d, old_start, old_end, new_start, new_end)
     rename_path(root, old_start, old_end, new_start, new_end)
 
 
@@ -244,22 +268,25 @@ def rename_tree(root: Path, old_start: int, old_end: int, new_start: int, new_en
 # ---------------------------------------------------------------------------
 
 
-def process_excel(file_path: Path, old_start: int, old_end: int, new_start: int, new_end: int) -> None:
+def process_excel(file_path: Path, old_start: int, old_end: int, new_start: int, new_end: int) -> bool:
     """Open an Excel file and:
       - Replace old year values with new year values in all cells
       - Move current-year data columns into previous-year columns
       - Clear sign-offs, comments, and metadata cells
+    Returns True on success, False if the file could not be processed.
     """
     try:
         wb = openpyxl.load_workbook(str(file_path))
-    except Exception:
-        return
+    except Exception as exc:
+        print(f"  [WARN] Skipping unreadable Excel file: {file_path.name} ({exc})")
+        return False
 
     for ws in wb.worksheets:
         _shift_year_columns(ws, old_start, old_end, new_start, new_end)
         _clear_signoffs_and_metadata(ws)
 
     wb.save(str(file_path))
+    return True
 
 
 def _shift_year_columns(ws, old_start, old_end, new_start, new_end) -> None:
@@ -326,9 +353,15 @@ def _clear_signoffs_and_metadata(ws) -> None:
 # ---------------------------------------------------------------------------
 
 
-def process_word(file_path: Path, old_start: int, old_end: int, new_start: int, new_end: int) -> None:
-    """Replace old year references with new year references in a Word document."""
-    doc = Document(str(file_path))
+def process_word(file_path: Path, old_start: int, old_end: int, new_start: int, new_end: int) -> bool:
+    """Replace old year references with new year references in a Word document.
+    Returns True on success, False if the file could not be processed.
+    """
+    try:
+        doc = Document(str(file_path))
+    except Exception as exc:
+        print(f"  [WARN] Skipping unreadable Word document: {file_path.name} ({exc})")
+        return False
 
     for paragraph in doc.paragraphs:
         paragraph.text = shift_years_in_text(
@@ -354,6 +387,7 @@ def process_word(file_path: Path, old_start: int, old_end: int, new_start: int, 
             )
 
     doc.save(str(file_path))
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -420,13 +454,13 @@ def run_rollover(
 
     # 3b. Process Excel files
     for xlsx in src_dir.rglob("*.xls*"):
-        process_excel(xlsx, old_start, old_end, new_start, new_end)
-        files_processed["excel"] += 1
+        if process_excel(xlsx, old_start, old_end, new_start, new_end):
+            files_processed["excel"] += 1
 
     # 3c. Process Word files
     for docx in src_dir.rglob("*.doc*"):
-        process_word(docx, old_start, old_end, new_start, new_end)
-        files_processed["word"] += 1
+        if process_word(docx, old_start, old_end, new_start, new_end):
+            files_processed["word"] += 1
 
     # 3d. Remove disallowed files
     count_before = sum(1 for p in src_dir.rglob("*") if p.is_file())
