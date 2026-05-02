@@ -21,7 +21,11 @@ async function createRollover(req, res, next) {
   try {
     const validationErrors = validateRolloverInput(req.body);
     if (validationErrors.length > 0) {
-      logger.warn('Validation failed', { errors: validationErrors, body: req.body });
+      logger.warn('Validation failed', {
+        errors: validationErrors,
+        clientName: req.body?.clientName,
+        newFinancialYear: req.body?.newFinancialYear,
+      });
       return res.status(400).json({ success: false, errors: validationErrors });
     }
 

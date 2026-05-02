@@ -29,7 +29,6 @@ function runRollover(jobId, clientName, newFinancialYear) {
       SCRIPT_PATH,
       '--client', clientName,
       '--year', newFinancialYear,
-      '--token', token
     ];
     if (archiveBase) {
       args.push('--archive', archiveBase);
