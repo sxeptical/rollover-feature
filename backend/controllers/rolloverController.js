@@ -1,7 +1,6 @@
 const logger = require('../utils/logger');
 const jobStore = require('../services/jobStore');
 const pythonRunner = require('../services/pythonRunner');
-const { requireAuth } = require('../middleware/auth');
 
 const YEAR_REGEX = /^(?:(?:FY\s*)?\d{4}\s*[-–]\s*\d{4}|\d{4})$/i;
 
@@ -32,7 +31,11 @@ async function createRollover(req, res, next) {
     }
 
     const { clientName, newFinancialYear } = req.body;
-    const jobId = jobStore.create(clientName.trim(), newFinancialYear.trim());
+    const jobId = jobStore.create(
+      clientName.trim(),
+      newFinancialYear.trim(),
+      req.sessionID,
+    );
 
     // Fire-and-forget: do NOT await
     pythonRunner.runRollover(jobId, clientName.trim(), newFinancialYear.trim(), token)
@@ -56,6 +59,10 @@ async function getStatus(req, res, next) {
       return res.status(404).json({ success: false, message: 'Job not found' });
     }
 
+    if (job.ownerSessionId && job.ownerSessionId !== req.sessionID) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
     return res.status(200).json({
       success: true,
       jobId: job.jobId,
@@ -74,5 +81,4 @@ async function getStatus(req, res, next) {
 module.exports = {
   createRollover,
   getStatus,
-  requireAuth,
 };
