@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import './App.css'
 
 function App() {
@@ -8,7 +8,27 @@ function App() {
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [auth, setAuth] = useState({ isAuthenticated: false, loading: true })
   const pollerRef = useRef(null)
+
+  // Check auth status on mount
+  useEffect(() => {
+    fetch('/auth/me', { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => setAuth({ isAuthenticated: data.authenticated, loading: false }))
+      .catch(() => setAuth({ isAuthenticated: false, loading: false }))
+  }, [])
+
+  // Handle OAuth errors from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const errorParam = params.get('error')
+    if (errorParam) {
+      setError(`Authentication error: ${errorParam}`)
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname)
+    }
+  }, [])
 
   const stopPolling = () => {
     if (pollerRef.current) {
@@ -21,7 +41,7 @@ function App() {
     stopPolling()
     pollerRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`/api/status/${id}`)
+        const res = await fetch(`/api/status/${id}`, { credentials: 'include' })
         const data = await res.json()
         if (!data.success) {
           setError(data.message || 'Failed to fetch status')
@@ -50,10 +70,14 @@ function App() {
       const res = await fetch('/api/rollover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ clientName, newFinancialYear: financialYear }),
       })
       const data = await res.json()
       if (!data.success) {
+        if (res.status === 401) {
+          setAuth({ isAuthenticated: false, loading: false })
+        }
         setError(data.errors ? data.errors.join(', ') : data.message || 'Request failed')
         return
       }
@@ -67,10 +91,53 @@ function App() {
     }
   }
 
+  const handleLogout = async () => {
+    try {
+      await fetch('/auth/logout', { method: 'POST', credentials: 'include' })
+      setAuth({ isAuthenticated: false, loading: false })
+      stopPolling()
+      setJobId(null)
+      setStatus(null)
+      setError(null)
+    } catch (err) {
+      setError('Logout failed: ' + err.message)
+    }
+  }
+
+  if (auth.loading) {
+    return (
+      <main className="tester-screen">
+        <section className="tester-card">
+          <p>Loading...</p>
+        </section>
+      </main>
+    )
+  }
+
+  if (!auth.isAuthenticated) {
+    return (
+      <main className="tester-screen">
+        <section className="tester-card">
+          <h1>Rollover Test Console</h1>
+          <p className="subtext">Connect your Dropbox account to get started.</p>
+          <a href="/auth/dropbox" className="rollover-btn">
+            Connect to Dropbox
+          </a>
+          {error ? <p className="rollover-error">{error}</p> : null}
+        </section>
+      </main>
+    )
+  }
+
   return (
     <main className="tester-screen">
       <section className="tester-card">
-        <h1>Rollover Test Console</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h1>Rollover Test Console</h1>
+          <button type="button" className="rollover-btn" onClick={handleLogout} style={{ width: 'auto', padding: '8px 16px' }}>
+            Disconnect
+          </button>
+        </div>
         <p className="subtext">Run the backend rollover against your Dropbox sample data.</p>
 
         <div className="rollover-form">

@@ -29,13 +29,21 @@ async function createRollover(req, res, next) {
       return res.status(400).json({ success: false, errors: validationErrors });
     }
 
+    const token = req.session.dropboxToken;
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Dropbox not connected' });
+    }
+
     const { clientName, newFinancialYear } = req.body;
-    const jobId = jobStore.create(clientName.trim(), newFinancialYear.trim());
+    const jobId = jobStore.create(
+      clientName.trim(),
+      newFinancialYear.trim(),
+      req.sessionID,
+    );
 
     // Fire-and-forget: do NOT await
-    pythonRunner.runRollover(jobId, clientName.trim(), newFinancialYear.trim())
+    pythonRunner.runRollover(jobId, clientName.trim(), newFinancialYear.trim(), token)
       .catch((err) => {
-        // Error already handled in pythonRunner; this prevents unhandled rejection
         logger.error(`Background rollover error`, { jobId, error: err.message });
       });
 
@@ -55,6 +63,10 @@ async function getStatus(req, res, next) {
       return res.status(404).json({ success: false, message: 'Job not found' });
     }
 
+    if (job.ownerSessionId && job.ownerSessionId !== req.sessionID) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
     return res.status(200).json({
       success: true,
       jobId: job.jobId,
@@ -72,5 +84,5 @@ async function getStatus(req, res, next) {
 
 module.exports = {
   createRollover,
-  getStatus
+  getStatus,
 };

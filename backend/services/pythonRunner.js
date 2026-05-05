@@ -11,13 +11,12 @@ const SCRIPT_PATH = path.resolve(__dirname, '..', 'scripts', 'rollover.py');
 
 const activeProcesses = new Map(); // jobId -> ChildProcess
 
-function runRollover(jobId, clientName, newFinancialYear) {
+function runRollover(jobId, clientName, newFinancialYear, token) {
   return new Promise((resolve, reject) => {
-    const token = process.env.DROPBOX_ACCESS_TOKEN;
     const archiveBase = process.env.DROPBOX_ARCHIVE_BASE;
     const clientsBase = process.env.DROPBOX_CLIENTS_BASE;
     if (!token) {
-      const err = new Error('DROPBOX_ACCESS_TOKEN environment variable not set');
+      const err = new Error('Dropbox token not provided');
       logger.error(err.message);
       return reject(err);
     }

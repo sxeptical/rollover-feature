@@ -5,7 +5,7 @@ const CLEANUP_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const jobs = new Map();
 
-function create(clientName, newFinancialYear) {
+function create(clientName, newFinancialYear, ownerSessionId = null) {
   const jobId = uuidv4();
   const now = new Date().toISOString();
   const job = {
@@ -13,6 +13,7 @@ function create(clientName, newFinancialYear) {
     status: 'pending',
     clientName,
     newFinancialYear,
+    ownerSessionId,
     createdAt: now,
     updatedAt: now,
     logs: [],
