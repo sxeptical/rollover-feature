@@ -2,11 +2,26 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 const express = require('express');
+const session = require('express-session');
 const rolloverRoutes = require('./routes/rolloverRoutes');
+const authRoutes = require('./routes/authRoutes');
 const logger = require('./utils/logger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Session middleware
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 24 * 60 * 60 * 1000,
+  },
+}));
 
 // Middleware
 app.use(express.json());
@@ -19,6 +34,7 @@ app.use((req, res, next) => {
 
 // Routes
 app.use('/api', rolloverRoutes);
+app.use('/auth', authRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

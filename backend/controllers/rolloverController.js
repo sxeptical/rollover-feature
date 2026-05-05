@@ -1,6 +1,7 @@
 const logger = require('../utils/logger');
 const jobStore = require('../services/jobStore');
 const pythonRunner = require('../services/pythonRunner');
+const { requireAuth } = require('../middleware/auth');
 
 const YEAR_REGEX = /^(?:(?:FY\s*)?\d{4}\s*[-–]\s*\d{4}|\d{4})$/i;
 
@@ -25,13 +26,17 @@ async function createRollover(req, res, next) {
       return res.status(400).json({ success: false, errors: validationErrors });
     }
 
+    const token = req.session.dropboxToken;
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Dropbox not connected' });
+    }
+
     const { clientName, newFinancialYear } = req.body;
     const jobId = jobStore.create(clientName.trim(), newFinancialYear.trim());
 
     // Fire-and-forget: do NOT await
-    pythonRunner.runRollover(jobId, clientName.trim(), newFinancialYear.trim())
+    pythonRunner.runRollover(jobId, clientName.trim(), newFinancialYear.trim(), token)
       .catch((err) => {
-        // Error already handled in pythonRunner; this prevents unhandled rejection
         logger.error(`Background rollover error`, { jobId, error: err.message });
       });
 
@@ -68,5 +73,6 @@ async function getStatus(req, res, next) {
 
 module.exports = {
   createRollover,
-  getStatus
+  getStatus,
+  requireAuth,
 };
